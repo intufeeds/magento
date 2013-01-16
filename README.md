@@ -1,5 +1,5 @@
-magento
-=======
+Magento Script
+==============
 
 The instructions for installing this script are fairly simple:-
 
