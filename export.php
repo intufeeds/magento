@@ -205,7 +205,7 @@ class Smtv_Export_Product_Collection extends Smtv_Export_Abstract {
 
         $this->_addIntFilterToCollection($products, 'status', '= 1');
         $this->_addVarcharToSelect($products, 'name');
-        $this->_addVarcharToSelect($products, 'image');
+        $this->_addVarcharToSelect($products, 'image', 'joinLeft');
         $this->_addTextToSelect($products, 'short_description');
         $this->_addTextToSelect($products, 'description');
         $this->_addIsInStockToSelect($products);
