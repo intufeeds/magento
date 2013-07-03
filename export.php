@@ -1,9 +1,9 @@
 <?php
 /**
- * Magento Script v5.0
+ * Magento Script v5.1
  *
  *
- * @copyright StyleMeTV Limited
+ * @copyright IntuDigital Limited
  */
 
 /**
@@ -29,7 +29,9 @@ abstract class Smtv_Export_Abstract extends Varien_Object {
     }
 
     public function startLogging() {
-        $this->_canLog = true;
+        if (Mage::app()->getRequest()->getParam('log')) {
+            $this->_canLog = true;
+        }
     }
 
     /**
@@ -142,7 +144,7 @@ abstract class Smtv_Export_Abstract extends Varien_Object {
      */
     public function log($msg) {
         if ($this->_canLog) {
-            echo sprintf('<h2>%s: <span style="color:red;">%s</span> / <span style="color:green;">%s</span></h2>', $msg, $this->getTotalTime(), self::_memory());
+            echo sprintf('<h4>%s: <span style="color:red;">%s</span> / <span style="color:green;">%s</span></h4>', $msg, $this->getTotalTime(), self::_memory());
             flush();
         }
     }
@@ -175,7 +177,6 @@ class Smtv_Export_Product_Collection extends Smtv_Export_Abstract {
         $this->_addIsInStockToSelect($products);
         $this->_addConfigurableAttributesToSelect($products);
 
-
         if ($limit = Mage::app()->getRequest()->getParam('limit')) {
             $products->limit($limit);
         }
@@ -183,9 +184,8 @@ class Smtv_Export_Product_Collection extends Smtv_Export_Abstract {
                 ->group('sku')
                 ->order('entity_id');
 
-        if ($this->_canLog) {
-            $this->log((string) $products);
-        }
+        $this->log('pre:: Query to get all products');
+        $this->log((string) $products);
         return self::_getReadAdapter()->fetchAll($products);
     }
 
@@ -209,9 +209,14 @@ class Smtv_Export_Product_Collection extends Smtv_Export_Abstract {
         $this->_addTextToSelect($products, 'short_description');
         $this->_addTextToSelect($products, 'description');
         $this->_addIsInStockToSelect($products);
+        $this->log('pre:: Adding configurable attributes to select for child products of parent id ' . $parentId);
         $this->_addConfigurableAttributesToSelect($products, $parentId);
-
-        return self::_getReadAdapter()->fetchAll($products);
+        $this->log('pre:: Query to extract child products info for parent id ' . $parentId);
+        $this->log((string) $products);
+        $output = self::_getReadAdapter()->fetchAll($products);
+        $this->log('post:: Extracted ' . count($output) . ' child products info for parent id ' . $parentId);
+        $this->log(print_r($output));
+        return $output;
     }
 
     /**
@@ -227,17 +232,25 @@ class Smtv_Export_Product_Collection extends Smtv_Export_Abstract {
                         ->from(array('e' => self::getTableName('catalog/product_super_attribute')), array())
                         ->join(array('eav' => self::getTableName('eav/attribute')),"`e`.`attribute_id` = `eav`.`attribute_id`", array('attribute_code'))
                         ->where('e.product_id = ?', $parentId);
+            $this->log('pre:: Query to extract configurable attributes for product id ' . $parentId);
+            $this->log((string) $attributes);
             $attributes = self::_getReadAdapter()->fetchAll($attributes);
+            $this->log('post:: Extracted configurable attributes info for product id ' . $parentId);
+            $this->log(print_r($attributes));
             $final = array();
             foreach ($attributes as $attr) {
                 $final[$attr['attribute_code']] = isset($configAttributes[$attr['attribute_code']]) ? $configAttributes[$attr['attribute_code']] : $attr['attribute_code'];
             }
             $configAttributes = $final;
+            $this->log('Final configurable attributes array after mapping');
+            $this->log(print_r($configAttributes));
         }
         // Add configurable attributes
         foreach($configAttributes as $code => $map_attribute) {
+            $this->log('pre:: Trying to get configurable attribute ' . $code);
             $attribute = $this->getProductAttribute($code);
             if ($attribute && $attribute->getId()) {
+                $this->log('pre:: Adding configurable attribute ' . $code . ', attribute id ' . $attribute->getId() . ' to select');
                 $this->_addIntToSelect($select, $code, 'joinLeft');
             }
         }
@@ -414,9 +427,7 @@ class Smtv_Export extends Smtv_Export_Abstract {
      */
     protected function _getAllProducts() {
         $collection = new Smtv_Export_Product_Collection();
-        if ($this->_canLog) {
-            $collection->startLogging();
-        }
+        $collection->startLogging();
         $products = $collection->getAllProducts();
         unset($collection);
         return $products;
@@ -565,16 +576,12 @@ class Smtv_Export extends Smtv_Export_Abstract {
                                     "`{$category_product_alias}`.`category_id` = `{$category_name_alias}`.`entity_id` AND `{$category_product_alias}`.`product_id` = '{$productId}' AND `{$category_name_alias}`.`attribute_id` = " . $attributeId,
                                     array('category_names' => 'value')
             );
-            if ($this->_canLog) {
-                $this->log('Query to extract categories');
-                $this->log((string) $select);
-            }
+            $this->log('pre:: Query to extract categories for product id ' . $productId);
+            $this->log((string) $select);
             $cols = self::_getReadAdapter()->fetchAll($select);
             $cols = is_array($cols) ? $cols : array($cols);
-            if ($this->_canLog) {
-                $this->log('Categories Info');
-                $this->log(print_r($cols));
-            }
+            $this->log('post:: Categories info extracted for product id ' . $productId);
+            $this->log(print_r($cols));
             $names = array();
             foreach ($cols as $col) {
                 $names[] = $col['category_names'];
@@ -718,9 +725,13 @@ class Smtv_Export extends Smtv_Export_Abstract {
                         ->select()
                         ->from(self::getTableName('catalog/product_super_link'), 'product_id')
                         ->where('parent_id=?', $productId);
-
+        $this->log("pre:: Query to extract list of child products for product id " . $productId);
+        $this->log((string) $select);
         if ($childIds = self::_getReadAdapter()->fetchCol($select)) {
+            $this->log("post:: List of child product ids extracted");
+            $this->log(print_r($childIds));
             $collection = new Smtv_Export_Product_Collection();
+            $collection->startLogging();
             return $collection->getChildProductsByIds($childIds, $productId);
         }
 
