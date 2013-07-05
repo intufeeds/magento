@@ -1,6 +1,6 @@
 <?php
 /**
- * Magento Script v5.1CR
+ * Magento Script v5.2CR
  *
  *
  * @copyright IntuDigital Limited
@@ -17,6 +17,7 @@ abstract class Smtv_Export_Abstract extends Varien_Object {
 
     static public $storeId = null;
     protected $_canLog = false;
+    protected $_scriptVersion = '5.2CR';
     protected $_configAttr = array('size' => 'size', 'colour' => 'colour', 'color' => 'colour', 'material' => 'colour');
 
     /**
@@ -27,13 +28,7 @@ abstract class Smtv_Export_Abstract extends Varien_Object {
         parent::__construct();
         self::$storeId = Mage::app()->getStore()->getId();
     }
-
-    public function startLogging() {
-        if (Mage::app()->getRequest()->getParam('log')) {
-            $this->_canLog = true;
-        }
-    }
-
+    
     /**
      * Strip empty items from the array
      *
@@ -46,7 +41,7 @@ abstract class Smtv_Export_Abstract extends Varien_Object {
             }
         }
     }
-
+    
     /**
      * Retrieve the read adapter
      *
@@ -64,6 +59,32 @@ abstract class Smtv_Export_Abstract extends Varien_Object {
      */
     static public function getTableName($table, $extra = null) {
         return Mage::getSingleton('core/resource')->getTableName($table) . $extra;
+    }
+    
+    /**
+     * Start logging
+     */
+    public function startLogging() {
+        if (Mage::app()->getRequest()->getParam('log')) {
+            $this->_canLog = true;
+        }
+    }
+    
+    /**
+     * Log all important debuggng info
+     */
+    public function logStartInfo() {
+        $this->log('Current script version: '. $this->_scriptVersion);
+        $this->log('pre:: Extracting list of store codes');
+        $storecodes = self::_getReadAdapter()->select()->from(array('e' => self::getTableName('core/store')), array('code', 'is_active'));
+        $storecodes = self::_getReadAdapter()->fetchAll($storecodes);
+        $this->log(print_r($storecodes, true));
+        $this->log('pre:: Extracting list of used configurable attribute codes');
+        $configAttributes = self::_getReadAdapter()->select()
+                        ->from(array('e' => self::getTableName('catalog/product_super_attribute')), array())
+                        ->join(array('eav' => self::getTableName('eav/attribute')),"`e`.`attribute_id` = `eav`.`attribute_id`", array('DISTINCT(attribute_code)'));
+        $configAttributes = self::_getReadAdapter()->fetchAll($configAttributes);
+        $this->log(print_r($configAttributes, true));
     }
 
     /**
@@ -215,7 +236,7 @@ class Smtv_Export_Product_Collection extends Smtv_Export_Abstract {
         $this->log((string) $products);
         $output = self::_getReadAdapter()->fetchAll($products);
         $this->log('post:: Extracted ' . count($output) . ' child products info for parent id ' . $parentId);
-        $this->log(print_r($output));
+        $this->log(print_r($output, true));
         return $output;
     }
 
@@ -236,14 +257,14 @@ class Smtv_Export_Product_Collection extends Smtv_Export_Abstract {
             $this->log((string) $attributes);
             $attributes = self::_getReadAdapter()->fetchAll($attributes);
             $this->log('post:: Extracted configurable attributes info for product id ' . $parentId);
-            $this->log(print_r($attributes));
+            $this->log(print_r($attributes, true));
             $final = array();
             foreach ($attributes as $attr) {
                 $final[$attr['attribute_code']] = isset($configAttributes[$attr['attribute_code']]) ? $configAttributes[$attr['attribute_code']] : $attr['attribute_code'];
             }
             $configAttributes = $final;
             $this->log('Final configurable attributes array after mapping');
-            $this->log(print_r($configAttributes));
+            $this->log(print_r($configAttributes, true));
         }
         // Add configurable attributes
         foreach($configAttributes as $code => $map_attribute) {
@@ -582,7 +603,7 @@ class Smtv_Export extends Smtv_Export_Abstract {
             $cols = self::_getReadAdapter()->fetchAll($select);
             $cols = is_array($cols) ? $cols : array($cols);
             $this->log('post:: Categories info extracted for product id ' . $productId);
-            $this->log(print_r($cols));
+            $this->log(print_r($cols, true));
             $names = array();
             foreach ($cols as $col) {
                 $names[] = $col['category_names'];
@@ -730,7 +751,7 @@ class Smtv_Export extends Smtv_Export_Abstract {
         $this->log((string) $select);
         if ($childIds = self::_getReadAdapter()->fetchCol($select)) {
             $this->log("post:: List of child product ids extracted");
-            $this->log(print_r($childIds));
+            $this->log(print_r($childIds, true));
             $collection = new Smtv_Export_Product_Collection();
             $collection->startLogging();
             return $collection->getChildProductsByIds($childIds, $productId);
@@ -753,6 +774,7 @@ try {
     if ($canLog == '1') {
         header('Content-Type: text/html; charset=utf8');
         $export->startLogging();
+        $export->logStartInfo();
     }
 
     $export->run();
